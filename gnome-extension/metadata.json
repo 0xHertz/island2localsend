@@ -1,0 +1,7 @@
+{
+  "uuid": "localsend-island@demo",
+  "name": "LocalSend Island Demo",
+  "description": "Minimal floating island with file drag & drop (GNOME 46+)",
+  "shell-version": ["46", "47"],
+  "version": 1
+}

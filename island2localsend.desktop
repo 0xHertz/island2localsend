@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Island2LocalSend
+Comment=将文件拖到屏幕顶部的灵动岛，通过 LocalSend 发送文件
+Icon=island2localsend
+Exec=GDK_BACKEND=x11 /usr/local/bin/island2localsend
+Terminal=false
+Categories=Utility;Network;FileTransfer;
+Keywords=send;share;file;transfer;localsend;
+StartupNotify=false
+StartupWMClass=island-sender
+Actions=Enable;Disable;Quit;
