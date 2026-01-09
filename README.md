@@ -1,4 +1,8 @@
-# Island2LocalSend
+<h1 align="center">Island2LocalSend</h1>
+
+<p align="center">
+  <img src="icons/island2localsend.svg" alt="Island2LocalSend Icon" width="128" />
+</p>
 
 Island2LocalSend is a GNOME Shell extension + companion GTK application that provides a **floating “Dynamic Island” style drop target** for quickly sending files to **LocalSend** via drag and drop.
 
