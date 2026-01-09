@@ -8,10 +8,6 @@ Island2LocalSend is a GNOME Shell extension + companion GTK application that pro
 
 The project is designed specifically for **GNOME Shell 46+** and follows modern GNOME extension and IPC practices.
 
-## Screenshots
-
-[video](https://github.com/0xHertz/island2localsend/blob/main/Screencast%20from%202026-01-08%2012-05-20.mp4)
-
 <p align="center">
   <img src="docs/demo.gif" width="600" alt="Drag files onto island to send via LocalSend">
 </p>
