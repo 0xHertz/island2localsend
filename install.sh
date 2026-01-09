@@ -6,7 +6,8 @@ echo "安装 Island 2 LocalSend..."
 echo "编译程序..."
 g++ -std=c++17 island2localsend.cpp -o island2localsend \
     `pkg-config --cflags --libs gtkmm-3.0` \
-    `pkg-config --cflags --libs ayatana-appindicator3-0.1`
+    `pkg-config --cflags --libs ayatana-appindicator3-0.1` \
+    `pkg-config --cflags --libs gio-2.0`
 
 if [ $? -ne 0 ]; then
     echo "编译失败！"
