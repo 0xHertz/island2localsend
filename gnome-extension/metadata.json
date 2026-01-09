@@ -1,6 +1,6 @@
 {
-  "uuid": "localsend-island@demo",
-  "name": "LocalSend Island Demo",
+  "uuid": "island2localsend@kechen",
+  "name": "Island2LocalSend",
   "description": "Minimal floating island with file drag & drop (GNOME 46+)",
   "shell-version": ["46", "47"],
   "version": 1

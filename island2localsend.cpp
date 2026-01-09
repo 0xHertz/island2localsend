@@ -3,6 +3,8 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
+#include <thread>
+#include <chrono>
 
 class MyWindow : public Gtk::Window {
 public:
@@ -116,6 +118,7 @@ public:
 
         // 鼠标拖着东西进入这个 600x200 的透明区域
         signal_drag_motion().connect([this](const Glib::RefPtr<Gdk::DragContext>& context, int x, int y, guint time) {
+            cancel_auto_disable_timer();
             // 只要进入 600x200 窗口就展开
             target_w = 300.0;
             target_h = 100.0;
@@ -144,16 +147,25 @@ public:
             target_y = -50.0;  // 缩回屏幕上方
             label.set_opacity(0.0);
             start_animation();
+            start_auto_disable_timer();
         });
 
         // 右键退出
         add_events(Gdk::BUTTON_PRESS_MASK);
         signal_button_press_event().connect([this](GdkEventButton* event) {
-            if (event->button == 3) this->hide();
+            if (event->button == 3){
+                this->is_enabled = false;
+                this->hide();
+                update_app_indicator_icon();
+                cancel_auto_disable_timer();
+                send_status_changed_signal(false,"右键禁用");
+                std::cout << "已禁用" << std::endl;
+            }
             return true;
         });
 
         show_all_children();
+        hide();
 
         // 4. 定位窗口位置（物理窗口位置固定不动）
         signal_realize().connect([this, WIN_W]() {
@@ -161,6 +173,8 @@ public:
             Gdk::Rectangle rect;
             screen->get_monitor_geometry(screen->get_primary_monitor(), rect);
             move(rect.get_x() + (rect.get_width() - WIN_W) / 2, rect.get_y()+50);
+            this->hide();
+            send_status_changed_signal(false,"启动时禁用");
         });
         // 阻止窗口关闭时退出程序
         signal_delete_event().connect([this](GdkEventAny* event) {
@@ -170,11 +184,16 @@ public:
             return true;
         });
         create_app_indicator();
+        // 初始化DBus连接
+        setup_dbus();
     }
     ~MyWindow() {
         if (app_indicator) {
             // 清理AppIndicator资源
             g_object_unref(app_indicator);
+        }
+        if (dbus_connection) {
+            g_object_unref(dbus_connection);
         }
     }
 
@@ -186,10 +205,299 @@ private:
     double current_w = 100.0, target_w = 100.0, vel_w = 0.0;
     double current_y = -50.0, target_y = -50.0, vel_y = 0.0;
     sigc::connection tick_conn;
+    sigc::connection auto_disable_conn;
 
     // 使用 Ayatana AppIndicator
     AppIndicator* app_indicator;
-    bool is_enabled = true;
+    bool is_enabled = false;
+
+    // DBus相关
+    GDBusConnection* dbus_connection;
+    guint dbus_registration_id;
+
+    void setup_dbus() {
+        GError* error = nullptr;
+
+        // 连接到会话总线
+        dbus_connection = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
+        if (error) {
+            std::cerr << "DBus连接失败: " << error->message << std::endl;
+            g_error_free(error);
+            return;
+        }
+
+        // 注册DBus服务名称
+        guint name_id = g_bus_own_name_on_connection(
+            dbus_connection,
+            "com.kechen.island2localsend",
+            G_BUS_NAME_OWNER_FLAGS_NONE,
+            nullptr,  // 名称获取回调
+            nullptr,  // 名称丢失回调
+            nullptr,  // 用户数据
+            nullptr   // 用户数据释放函数
+        );
+
+        // 创建接口信息
+        GDBusNodeInfo* introspection_data = nullptr;
+        const gchar introspection_xml[] =
+            "<node>"
+            "  <interface name='com.kechen.island2localsend'>"
+            "    <method name='Enable'>"
+            "      <arg type='b' name='show_window' direction='in'/>"
+            "      <arg type='s' name='message' direction='in'/>"
+            "      <arg type='b' name='success' direction='out'/>"
+            "    </method>"
+            "    <method name='ShowNotification'>"
+            "      <arg type='s' name='title' direction='in'/>"
+            "      <arg type='s' name='message' direction='in'/>"
+            "      <arg type='b' name='success' direction='out'/>"
+            "    </method>"
+            "    <signal name='StatusChanged'>"
+            "      <arg type='b' name='enabled'/>"
+            "      <arg type='s' name='status_message'/>"
+            "    </signal>"
+            "  </interface>"
+            "</node>";
+
+        introspection_data = g_dbus_node_info_new_for_xml(introspection_xml, &error);
+        if (error) {
+            std::cerr << "DBus接口解析失败: " << error->message << std::endl;
+            g_error_free(error);
+            return;
+        }
+
+        // 获取接口信息
+        GDBusInterfaceInfo* interface_info = g_dbus_node_info_lookup_interface(
+            introspection_data, "com.kechen.island2localsend");
+
+        // 接口虚拟函数表
+        static const GDBusInterfaceVTable interface_vtable = {
+            handle_method_call,
+            nullptr,  // 属性获取
+            nullptr   // 属性设置
+        };
+
+        // 注册对象
+        dbus_registration_id = g_dbus_connection_register_object(
+            dbus_connection,
+            "/com/kechen/island2localsend",
+            interface_info,
+            &interface_vtable,
+            this,  // 用户数据，指向MyWindow实例
+            nullptr,  // 用户数据释放函数
+            &error);
+
+        if (error) {
+            std::cerr << "DBus对象注册失败: " << error->message << std::endl;
+            g_error_free(error);
+            g_dbus_node_info_unref(introspection_data);
+            return;
+        }
+
+        std::cout << "DBus服务已启动: com.kechen.island2localsend" << std::endl;
+
+        // 释放接口信息
+        g_dbus_node_info_unref(introspection_data);
+    }
+
+    // 静态方法，处理DBus方法调用
+    static void handle_method_call(GDBusConnection* connection,
+                                    const gchar* sender,
+                                    const gchar* object_path,
+                                    const gchar* interface_name,
+                                    const gchar* method_name,
+                                    GVariant* parameters,
+                                    GDBusMethodInvocation* invocation,
+                                    gpointer user_data) {
+        MyWindow* self = static_cast<MyWindow*>(user_data);
+
+        std::cout << "收到DBus方法调用: " << method_name << std::endl;
+
+        if (g_strcmp0(method_name, "Enable") == 0) {
+            self->handle_enable_method(connection, invocation, parameters);
+        } else if (g_strcmp0(method_name, "ShowNotification") == 0) {
+            self->handle_show_notification_method(connection, invocation, parameters);
+        } else {
+            g_dbus_method_invocation_return_error(
+                invocation, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD,
+                "未知方法: %s", method_name);
+        }
+    }
+
+    void handle_enable_method(GDBusConnection* connection,
+                                GDBusMethodInvocation* invocation,
+                                GVariant* parameters) {
+        gboolean show_window = FALSE;
+        gchar* message = nullptr;
+
+        // 解析参数
+        g_variant_get(parameters, "(bs)", &show_window, &message);
+
+        // 转换为std::string
+        std::string message_str;
+        if (message) {
+            // 检查字符串是否是有效的UTF-8
+            if (g_utf8_validate(message, -1, nullptr)) {
+                message_str = message;
+                std::cout << "收到启用请求: show_window=" << show_window
+                            << ", message=" << message_str << std::endl;
+            } else {
+                // 如果不是有效UTF-8，使用默认消息
+                message_str = "从DBus启用";
+                std::cerr << "警告: 接收到的消息不是有效的UTF-8字符串，使用默认消息。" << std::endl;
+            }
+            g_free(message);
+        } else {
+            message_str = "从DBus启用";
+        }
+
+        // 在主线程中执行启用操作
+        Glib::signal_idle().connect_once([this, show_window, message_str]() {
+            this->enable_from_dbus(show_window, message_str);
+        });
+
+        // 立即返回成功
+        GVariant* result = g_variant_new("(b)", TRUE);
+        g_dbus_method_invocation_return_value(invocation, result);
+    }
+
+    void handle_show_notification_method(GDBusConnection* connection,
+                                            GDBusMethodInvocation* invocation,
+                                            GVariant* parameters) {
+        gchar* title = nullptr;
+        gchar* message = nullptr;
+
+        // 解析参数
+        g_variant_get(parameters, "(ss)", &title, &message);
+
+        // 转换为std::string
+        std::string title_str, message_str;
+        if (title && g_utf8_validate(title, -1, nullptr)) {
+            title_str = title;
+        } else {
+            title_str = "Island2LocalSend";
+        }
+
+        if (message && g_utf8_validate(message, -1, nullptr)) {
+            message_str = message;
+        } else {
+            message_str = "通知";
+        }
+
+        std::cout << "收到通知请求: title=" << title_str
+                    << ", message=" << message_str << std::endl;
+
+        if (title) g_free(title);
+        if (message) g_free(message);
+
+        // 发送状态变更信号
+        send_status_changed_signal(is_enabled,
+            std::string("收到通知: ") + (message_str));
+
+
+        // 在主线程中执行通知显示
+        Glib::signal_idle().connect_once([this, title_str, message_str]() {
+            this->show_notification_from_dbus(title_str, message_str);
+        });
+
+        // 返回成功
+        GVariant* result = g_variant_new("(b)", TRUE);
+        g_dbus_method_invocation_return_value(invocation, result);
+    }
+
+    void enable_from_dbus(bool show_window, const std::string& message) {
+        if (!is_enabled) {
+            is_enabled = true;
+            if (show_window) {
+                start_auto_disable_timer();
+                show();
+            }
+            update_app_indicator_icon();
+
+            std::cout << "从DBus启用: " << message << std::endl;
+
+            // 发送状态变更信号
+            send_status_changed_signal(true, "从DBus启用: " + message);
+
+            // 显示通知（可选）
+            // show_notification_from_dbus("Island2LocalSend", message);
+        }
+    }
+
+    void show_notification_from_dbus(const std::string& title, const std::string& message) {
+        // 使用系统命令发送通知，确保字符串被正确引用
+        std::string safe_title = escape_for_shell(title);
+        std::string safe_message = escape_for_shell(message);
+
+        std::string cmd = "notify-send \"" + safe_title + "\" \"" + safe_message + "\"";
+        std::cout << "执行命令: " << cmd << std::endl;
+        int result = std::system(cmd.c_str());
+
+        if (result != 0) {
+            std::cerr << "发送通知失败，退出码: " << result << std::endl;
+        }
+    }
+
+    std::string escape_for_shell(const std::string& str) {
+        std::string escaped;
+        for (char c : str) {
+            if (c == '"' || c == '$' || c == '`' || c == '\\') {
+                escaped.push_back('\\');
+            }
+            escaped.push_back(c);
+        }
+        return escaped;
+    }
+
+    void send_status_changed_signal(bool enabled, const std::string& status_message) {
+        if (!dbus_connection) return;
+
+        // 确保字符串是有效的UTF-8
+        const gchar* msg = status_message.c_str();
+        if (!g_utf8_validate(msg, -1, nullptr)) {
+            msg = "状态已改变";
+        }
+
+        GVariant* signal_value = g_variant_new("(bs)", enabled, status_message.c_str());
+        GError* error = nullptr;
+
+        g_dbus_connection_emit_signal(
+            dbus_connection,
+            nullptr,  // 发送者，null表示使用连接的唯一名称
+            "/com/kechen/island2localsend",
+            "com.kechen.island2localsend",
+            "StatusChanged",
+            signal_value,
+            &error);
+
+        if (error) {
+            std::cerr << "发送状态变更信号失败: " << error->message << std::endl;
+            g_error_free(error);
+        }
+    }
+
+    void start_auto_disable_timer() {
+        // 取消现有的计时器
+        cancel_auto_disable_timer();
+
+        // 设置10秒后自动禁用
+        auto_disable_conn = Glib::signal_timeout().connect([this]() {
+            if (is_enabled && is_visible()) {
+                std::cout << "鼠标离开10秒，自动禁用窗口" << std::endl;
+                is_enabled = false;
+                hide();
+                send_status_changed_signal(false,"自动禁用");
+                update_app_indicator_icon();
+            }
+            return false; // 只执行一次
+        }, 10000); // 10秒 = 10000毫秒
+    }
+
+    void cancel_auto_disable_timer() {
+        if (auto_disable_conn.connected()) {
+            auto_disable_conn.disconnect();
+        }
+    }
 
     void create_app_indicator() {
         // 创建菜单
@@ -201,7 +509,9 @@ private:
             if (!is_enabled) {
                 is_enabled = true;
                 show(); // 显示窗口
+                start_auto_disable_timer(); // 启动自动禁用计时器
                 update_app_indicator_icon();
+                send_status_changed_signal(true,"手动启用");
                 std::cout << "已启用" << std::endl;
             }
         });
@@ -214,6 +524,8 @@ private:
                 is_enabled = false;
                 hide(); // 隐藏窗口
                 update_app_indicator_icon();
+                cancel_auto_disable_timer();
+                send_status_changed_signal(false,"手动禁用");
                 std::cout << "已禁用" << std::endl;
             }
         });
@@ -366,7 +678,7 @@ private:
 };
 
 int main(int argc, char* argv[]) {
-    auto app = Gtk::Application::create(argc, argv, "com.example.island_sens");
+    auto app = Gtk::Application::create(argc, argv, "com.kechen.island2localsend");
     MyWindow win;
     return app->run(win);
 }
