@@ -588,7 +588,7 @@ private:
             // 尝试使用灰色变体图标
             app_indicator_set_icon_full(
                 app_indicator,
-                "process-stop",  // 灰色发送图标
+                "view-restore",  // 灰色发送图标
                 "LocalSend 发送器 (已禁用)"
             );
         }
