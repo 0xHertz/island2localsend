@@ -4,180 +4,118 @@
   <img src="icons/island2localsend.svg" alt="Island2LocalSend Icon" width="128" />
 </p>
 
-Island2LocalSend is a GNOME Shell extension + companion GTK application that provides a **floating “Dynamic Island” style drop target** for quickly sending files to **LocalSend** via drag and drop.
+Island2LocalSend is a GNOME Shell extension + companion GTK application that provides a **floating "Dynamic Island" style drop target** for quickly sending files via drag and drop.
 
-The project is designed specifically for **GNOME Shell 46+** and follows modern GNOME extension and IPC practices.
+Supports **LocalSend** and **GSConnect** — drag left for LocalSend (green), drag right for GSConnect (blue) with inline device selection.
 
-<p align="center">
-  <img src="docs/demo.gif" width="600" alt="Drag files onto island to send via LocalSend">
-</p>
+Designed for **GNOME Shell 46+**.
 
 ---
 
 ## Features
 
 - Floating island-style UI triggered by file drag events
-- Drag & drop files directly onto the island to send via LocalSend
-- Automatic expand / collapse animation during drag operations
+- **Split-zone island**: left half → LocalSend, right half → GSConnect
+- **Color-coded fill animation**: green for LocalSend, blue for GSConnect
+- **Inline GSConnect device picker**: horizontal pill buttons with scrollable list
+- **Spring-physics animations**: smooth expand/collapse, scroll inertia, bounce feedback
+- Drag & drop files onto island or specific GSConnect device
 - GNOME Shell extension (JavaScript) + native GTK helper (C++)
-- DBus-based communication between GNOME Shell and native app
-- Desktop launcher and icon integration
-- Minimal, low-overhead implementation
+- DBus-based communication between Shell, native app, and GSConnect
+- System tray icon with enable/disable/quit menu
 
 ---
 
-## Architecture Overview
+## Architecture
 
-Island2LocalSend consists of **three main components**:
+Three components connected by DBus:
 
 ### 1. GNOME Shell Extension
-
-Location:
-```
-/gnome-extension
-```
-
-Key files:
-- `extension.js` – Implements drag monitoring
-- `metadata.json` – Extension metadata (GNOME 46/47 compatible)
-
-Responsibilities:
-- Monitor global drag-and-drop (DND) events
-- Launch or communicate with the native sender process via DBUS
-
----
+- `gnome-extension/extension.js` — monitors global DND, detects drag near top of screen
+- `gnome-extension/metadata.json` — GNOME 46/47 compatible
 
 ### 2. Native GTK App (C++)
+- `island2localsend.cpp` — Cairo-drawn floating island, split-zone drag detection, device list, animations
+- `island2localsend.desktop` — application launcher
+- `install.sh` — build & install script
 
-Location:
-```
-/island2localsend.cpp
-```
-
-Responsibilities:
-- Acts as a lightweight GTK application
-- Display and animate the floating island UI
-- Detect drag enter / leave / drop
-- Bridges GNOME Shell with LocalSend
-- Ensures reliable file handoff outside of the Shell sandbox
-
-This separation is required because **GNOME Shell extensions cannot directly perform complex file or process operations**.
-
----
-
-### 3. Desktop & Integration Assets
-
-- `island2localsend.desktop` – Application launcher
-- `icons/` – Full hicolor icon set (16x16 → 256x256, SVG)
-- Optional autostart support (commented in install script)
+### 3. GSConnect (external)
+- DBus service at `org.gnome.Shell.Extensions.GSConnect`
+- Called via `org.gtk.Actions.Activate` on device objects
 
 ---
 
 ## Installation
 
 ### Prerequisites
-
-- GNOME Shell **46 or newer**
-- `g++` with C++17 support
-- `gtkmm-3.0`
-- `pkg-config`
-
-On Debian/Ubuntu-based systems:
+- GNOME Shell 46+
+- `g++` (C++17), `gtkmm-3.0`, `ayatana-appindicator3-0.1`, `gio-2.0`
 
 ```bash
-sudo apt install g++ pkg-config libgtkmm-3.0-dev
+sudo apt install g++ pkg-config libgtkmm-3.0-dev libayatana-appindicator3-dev
 ```
 
----
-
-### Install Steps
-
+### Build & Install
 ```bash
-unzip island2localsend@kechen.zip
 cd island2localsend@kechen
 chmod +x install.sh
 ./install.sh
 ```
 
-The script will:
-
-1. Compile `island2localsend.cpp`
-2. Generate the native app binary
-3. Install desktop and icon assets
-
----
-
-### Enable GNOME Extension
-
+### Enable Extension
 ```bash
 gnome-extensions install gnome-extension/island2localsend@kechen
-
 gnome-extensions enable island2localsend@kechen
 ```
 
-Then restart GNOME Shell:
-
-- **X11**: `Alt + F2`, type `r`, press Enter
-- **Wayland**: log out and back in
+Restart GNOME Shell (Alt+F2 → `r` on X11, or log out/in on Wayland).
 
 ---
 
 ## Usage
 
-1. Start island2localsend on your devices
-2. Drag a file from Files (Nautilus)
-3. The floating island appears automatically
-4. Drop the file onto the island
-5. LocalSend transfer begins immediately
+1. Start `island2localsend` (auto-starts on login if configured)
+2. Drag a file from Nautilus to the top of the screen
+3. The floating island appears:
 
-No manual app switching required.
+| Action | Visual | Backend |
+|--------|--------|---------|
+| Drag to **left half** | Green fill | LocalSend |
+| Drag to **right half** | Blue fill → device list | GSConnect |
+| Select a device | Green pill highlight | GSConnect → selected device |
+| Release | Island contracts, sends file | — |
+
+GSConnect device list: up to 3 visible. With 4+ devices, drag to island edges to scroll.
 
 ---
 
-## Design Principles
-
-- GNOME-native behavior (no hacks, no legacy APIs)
-- Minimal UI footprint
-- Clear separation between Shell and native code
-- GNOME 46+ only (no backward compatibility burden)
+## GSConnect Send (DBus)
+```
+gdbus call --session \
+  --dest org.gnome.Shell.Extensions.GSConnect \
+  --object-path /org/gnome/Shell/Extensions/GSConnect/Device/{ID} \
+  --method org.gtk.Actions.Activate \
+  shareFile "[<('/path/to/file', false)>]" {}
+```
 
 ---
 
 ## GNOME Version Support
 
-| GNOME Version | Supported |
-|--------------|-----------|
-| 46           | ✅ Yes |
-| 47           | ✅ Yes |
-| ≤ 45         | ❌ No |
-
----
-
-## Known Limitations
-
-- Requires X11 for certain drag monitoring behaviors
-- Wayland support depends on GNOME internal DND changes
-- LocalSend must be installed and discoverable
-
----
-
-## Development Notes
-
-- GNOME Shell extensions are written in JavaScript (GJS)
-- Native sender uses GTKmm (C++17)
-- IPC via DBus for robustness and security
+| GNOME | Supported |
+|-------|-----------|
+| 46    | ✅ |
+| 47    | ✅ |
+| ≤ 45  | ❌ |
 
 ---
 
 ## License
 
-MIT License
+MIT
 
 ---
 
 ## Author
 
-**KeChen**
-
-
-
+KeChen

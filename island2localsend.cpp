@@ -5,6 +5,8 @@
 #include <cmath>
 #include <thread>
 #include <chrono>
+#include <regex>
+#include <cstring>
 
 class MyWindow : public Gtk::Window {
 public:
@@ -92,22 +94,28 @@ public:
                 }
             }
 
-            // 2. 如果路径列表不为空，调用 LocalSend
+            // 2. 如果路径列表不为空，发送文件
             if (!paths.empty()) {
-                // 这里的 localsend_app 改为你系统中实际的可执行文件名
-                std::string command = "localsend_app";
-                for (const auto& path : paths) {
-                    command += " \"" + path + "\""; // 路径加引号防止空格断裂
+                if (drag_is_gsconnect && gsconnect_available) {
+                    send_via_gsconnect(paths);
+                    drag_is_gsconnect = false;
+                } else {
+                    std::string command = "localsend_app";
+                    for (const auto& path : paths) {
+                        command += " \"" + path + "\"";
+                    }
+                    command += " &";
+                    std::cout << "LocalSend 启动中: " << command << std::endl;
+                    std::system(command.c_str());
                 }
-                command += " &"; // 关键：后台运行，不阻塞灵动岛收缩
 
-                std::cout << "LocalSend 启动中: " << command << std::endl;
-                std::system(command.c_str());
-
-                // 3. 交互反馈：立刻让岛屿收缩
                 target_w = 100.0;
                 target_h = 20.0;
                 label.set_opacity(0.0);
+                show_device_list = false;
+                gsconnect_hovered = -1;
+                target_fill = 0.0;
+                target_scroll = 0.0;
                 start_animation();
             }
 
@@ -116,36 +124,108 @@ public:
         });
 
 
-        // 鼠标拖着东西进入这个 600x200 的透明区域
         signal_drag_motion().connect([this](const Glib::RefPtr<Gdk::DragContext>& context, int x, int y, guint time) {
             cancel_auto_disable_timer();
-            // 只要进入 600x200 窗口就展开
             target_w = 300.0;
             target_h = 100.0;
             target_y = 30.0;
             label.set_opacity(1.0);
             start_animation();
 
-            // 逻辑判定：鼠标是否在岛屿内部
             int win_w = drawing_area.get_allocated_width();
             double island_x_start = (win_w - current_w) / 2.0;
 
             if (x >= island_x_start && x <= (island_x_start + current_w) && y <= (current_h + current_y)) {
-                // 在岛屿内，显示“可投放”状态
                 gdk_drag_status(context->gobj(), GDK_ACTION_COPY, time);
+
+                double island_center = island_x_start + current_w / 2.0;
+
+                if (show_device_list) {
+                    target_fill = 1.0;
+                    drag_is_gsconnect = true;
+                    int total = (int)gsconnect_devices.size();
+                    double pad = fill_padding;
+                    int vis = std::min(total, 3);
+                    double inner_gap = (vis == 1) ? 0.0 : 6.0;
+                    double btn_w = (current_w - pad * 2 - inner_gap * (vis - 1)) / vis;
+                    double step = btn_w + inner_gap;
+
+                    if (total > 3) {
+                        double frac = (x - island_x_start) / current_w;
+                        frac = std::clamp(frac, 0.0, 1.0);
+                        double max_s = (double)(total - 3);
+                        scroll_max = max_s;
+                        double edge = 0.35;
+                        if (frac < edge)
+                            scroll_rate = -((edge - frac) / edge) * 0.22;
+                        else if (frac > 1.0 - edge)
+                            scroll_rate = ((frac - (1.0 - edge)) / edge) * 0.22;
+                        else
+                            scroll_rate = 0.0;
+                    }
+
+                    int sbase = (int)std::round(scroll_offset);
+                    int idx = std::clamp(
+                        (int)((x - island_x_start - pad + scroll_offset * step) / step + 0.5),
+                        0, total - 1);
+                    gsconnect_hovered = idx;
+                    gsconnect_device = gsconnect_devices[idx];
+                    label.set_markup(
+                        "<span color='white' font='11'><b></b></span>");
+                } else {
+                    target_fill = std::clamp((x - island_center) / (current_w * 0.25), -1.0, 1.0);
+                    {
+                        double af = std::abs(target_fill);
+                        if (af >= 0.92 && prev_abs_fill < 0.92)
+                            bounce_vel = 0.18;
+                        prev_abs_fill = af;
+                    }
+
+                    if (x >= island_center) {
+                        if (!gsconnect_checked)
+                            query_gsconnect_devices();
+                        if (gsconnect_available) {
+                            drag_is_gsconnect = true;
+                            if (target_fill >= 0.92 && !gsconnect_devices.empty()) {
+                                show_device_list = true;
+                                gsconnect_checked = false;
+                            }
+                            label.set_markup(
+                                "<span color='white' font='11'><b>GSConnect</b></span>");
+                        } else {
+                            label.set_markup(
+                                "<span color='white' font='11'><b>LocalSend</b></span>");
+                        }
+                    } else {
+                        drag_is_gsconnect = false;
+                        label.set_markup(
+                            "<span color='white' font='11'><b>LocalSend</b></span>");
+                    }
+                }
             } else {
-                // 在感应区但在岛屿外，显示“禁止”或“默认”状态
                 gdk_drag_status(context->gobj(), (GdkDragAction)0, time);
+                target_fill = 0.0;
+                show_device_list = false;
+                gsconnect_hovered = -1;
+                target_scroll = 0.0;
             }
             return true;
         });
 
 
         signal_drag_leave().connect([this](const Glib::RefPtr<Gdk::DragContext>&, guint) {
-            target_w = 100.0; // 恢复窄条
+            target_w = 100.0;
             target_h = 20.0;
-            target_y = -50.0;  // 缩回屏幕上方
+            target_y = -50.0;
             label.set_opacity(0.0);
+            show_device_list = false;
+            gsconnect_hovered = -1;
+            gsconnect_checked = false;
+            target_fill = 0.0;
+            bounce_pos = 0.0;
+            bounce_vel = 0.0;
+            prev_abs_fill = 0.0;
+            target_scroll = 0.0;
             start_animation();
             start_auto_disable_timer();
         });
@@ -204,6 +284,9 @@ private:
     double current_h = 20.0, target_h = 20.0, vel_h = 0.0;
     double current_w = 100.0, target_w = 100.0, vel_w = 0.0;
     double current_y = -50.0, target_y = -50.0, vel_y = 0.0;
+    double current_fill = 0.0, target_fill = 0.0, vel_fill = 0.0;
+    double prev_abs_fill = 0.0, bounce_pos = 0.0, bounce_vel = 0.0;
+    const double fill_padding = 4.0;
     sigc::connection tick_conn;
     sigc::connection auto_disable_conn;
 
@@ -214,6 +297,23 @@ private:
     // DBus相关
     GDBusConnection* dbus_connection;
     guint dbus_registration_id;
+
+    // GSConnect 相关
+    struct GSConnectDevice {
+        std::string id;
+        std::string name;
+        bool connected = false;
+    };
+    bool drag_is_gsconnect = false;
+    GSConnectDevice gsconnect_device;       // 当前选中的 GSConnect 设备
+    bool gsconnect_checked = false;
+    bool gsconnect_available = false;
+    std::vector<GSConnectDevice> gsconnect_devices;  // 所有设备列表
+    bool show_device_list = false;           // 是否展示设备列表
+    int gsconnect_hovered = -1;
+    double scroll_offset = 0.0, target_scroll = 0.0, scroll_vel = 0.0;
+    double scroll_max = 0.0;
+    double scroll_rate = 0.0;
 
     void setup_dbus() {
         GError* error = nullptr;
@@ -595,6 +695,91 @@ private:
     }
 
 
+    void query_gsconnect_devices() {
+        if (gsconnect_checked) return;
+        gsconnect_checked = true;
+        gsconnect_available = false;
+        gsconnect_device = {};
+        gsconnect_devices.clear();
+
+        std::string cmd =
+            "gdbus call --session "
+            "--dest org.gnome.Shell.Extensions.GSConnect "
+            "--object-path /org/gnome/Shell/Extensions/GSConnect "
+            "--method org.freedesktop.DBus.ObjectManager.GetManagedObjects "
+            "2>/dev/null";
+
+        FILE* pipe = popen(cmd.c_str(), "r");
+        if (!pipe) return;
+
+        std::string output;
+        char buffer[8192];
+        while (fgets(buffer, sizeof(buffer), pipe))
+            output += buffer;
+        pclose(pipe);
+
+        std::regex device_re("/org/gnome/Shell/Extensions/GSConnect/Device/([^']+)");
+        std::sregex_iterator it(output.begin(), output.end(), device_re);
+        std::sregex_iterator end;
+
+        for (; it != end; ++it) {
+            std::string dev_id = (*it)[1];
+            std::string dev_path = (*it)[0];
+
+            size_t pos = output.find(dev_path);
+            if (pos == std::string::npos) continue;
+
+            std::string section = output.substr(pos, output.find("},", pos) - pos);
+            std::regex name_re("'Name':\\s*<'([^']*)'");
+            std::regex conn_re("'Connected':\\s*<([^>]+)>");
+            std::smatch nm, cm;
+
+            GSConnectDevice dev;
+            dev.id = dev_id;
+            if (std::regex_search(section, nm, name_re))
+                dev.name = nm[1];
+            if (std::regex_search(section, cm, conn_re))
+                dev.connected = (cm[1] == "true");
+
+            gsconnect_devices.push_back(dev);
+            std::cout << "[GSConnect] 设备: " << dev.name
+                      << " (" << dev.id << ") "
+                      << (dev.connected ? "在线" : "离线") << std::endl;
+        }
+
+        if (!gsconnect_devices.empty()) {
+            gsconnect_available = true;
+            for (auto& d : gsconnect_devices) {
+                if (d.connected) {
+                    gsconnect_device = d;
+                    break;
+                }
+            }
+            if (gsconnect_device.id.empty())
+                gsconnect_device = gsconnect_devices[0];
+        }
+    }
+
+    void send_via_gsconnect(const std::vector<std::string>& paths) {
+        if (!gsconnect_available || gsconnect_device.id.empty()) return;
+        gsconnect_checked = false;
+        std::string dev_id = gsconnect_device.id;
+
+        for (const auto& path : paths) {
+            std::string cmd =
+                "gdbus call --session"
+                " --dest org.gnome.Shell.Extensions.GSConnect"
+                " --object-path /org/gnome/Shell/Extensions/GSConnect/Device/" + dev_id +
+                " --method org.gtk.Actions.Activate"
+                " shareFile"
+                " \"[<('" + escape_for_shell(path) + "', false)>]\""
+                " {}"
+                " 2>&1 &";
+            std::cout << "[GSConnect] " << cmd << std::endl;
+            std::system(cmd.c_str());
+        }
+    }
+
     bool on_drawing_area_draw(const Cairo::RefPtr<Cairo::Context>& cr) {
         int win_w = drawing_area.get_allocated_width();
         int win_h = drawing_area.get_allocated_height();
@@ -624,20 +809,172 @@ private:
 
         cr->set_antialias(Cairo::ANTIALIAS_DEFAULT);
 
-        // D. 绘制黑色岛屿
-        // double cur_r = std::min(radius, std::min(current_w / 2.0, current_h));
+        // D. 绘制黑色岛屿背景
+        auto pill_path = [&]() {
+            cr->begin_new_path();
+            cr->arc(island_x + current_w - radius, island_y + radius, radius, -M_PI/2, 0);
+            cr->arc(island_x + current_w - radius, island_y + current_h - radius, radius, 0, M_PI/2);
+            cr->arc(island_x + radius, island_y + current_h - radius, radius, M_PI/2, M_PI);
+            cr->arc(island_x + radius, island_y + radius, radius, M_PI, 3*M_PI/2);
+            cr->close_path();
+        };
 
-        cr->begin_new_path();
-        cr->arc(island_x + current_w - radius, island_y + radius, radius, -M_PI/2, 0); // 右上
-        cr->arc(island_x + current_w - radius, island_y + current_h - radius, radius, 0, M_PI/2); // 右下
-        cr->arc(island_x + radius, island_y + current_h - radius, radius, M_PI/2, M_PI); // 左下
-        cr->arc(island_x + radius, island_y + radius, radius, M_PI, 3*M_PI/2); // 左上
-        cr->close_path();
-
+        pill_path();
         cr->set_source_rgba(0.05, 0.05, 0.05, 1.0);
-        cr->fill_preserve();
+        cr->fill();
 
-        // 4. 绘制全闭合亮色边框
+        // E. 渐变色填充
+        if (std::abs(current_fill) > 0.005) {
+            double pad = fill_padding;
+            double fill_r = (current_h - pad * 2) / 2.0;
+            double full_w = current_w - pad * 2;
+            double abs_fill = std::abs(current_fill);
+            double fill_w = abs_fill * full_w;
+            double inner_r = std::min(fill_r, fill_w / 2.0);
+            bool use_arc = (fill_w >= fill_r * 2.0);
+
+            cr->save();
+            cr->begin_new_path();
+            cr->arc(island_x + current_w - pad - fill_r, island_y + pad + fill_r, fill_r, -M_PI/2, 0);
+            cr->arc(island_x + current_w - pad - fill_r, island_y + current_h - pad - fill_r, fill_r, 0, M_PI/2);
+            cr->arc(island_x + pad + fill_r, island_y + current_h - pad - fill_r, fill_r, M_PI/2, M_PI);
+            cr->arc(island_x + pad + fill_r, island_y + pad + fill_r, fill_r, M_PI, 3*M_PI/2);
+            cr->close_path();
+            cr->clip();
+
+            double cy = island_y + current_h / 2.0;
+            if (current_fill < 0) {
+                if (use_arc) {
+                    double tip = island_x + pad + fill_w;
+                    cr->move_to(tip, island_y + pad);
+                    cr->arc(tip, cy, inner_r, -M_PI / 2, M_PI / 2);
+                    cr->line_to(island_x + pad, island_y + current_h - pad);
+                    cr->line_to(island_x + pad, island_y + pad);
+                    cr->close_path();
+                } else {
+                    cr->rectangle(island_x + pad, island_y + pad, fill_w, current_h - pad * 2);
+                }
+                cr->set_source_rgba(0.204, 0.780, 0.349, 0.55);
+            } else {
+                if (use_arc) {
+                    double tip = island_x + current_w - pad - fill_w;
+                    cr->move_to(tip, island_y + pad);
+                    cr->arc_negative(tip, cy, inner_r, 3 * M_PI / 2, M_PI / 2);
+                    cr->line_to(island_x + current_w - pad, island_y + current_h - pad);
+                    cr->line_to(island_x + current_w - pad, island_y + pad);
+                    cr->close_path();
+                } else {
+                    cr->rectangle(island_x + current_w - pad - fill_w, island_y + pad, fill_w, current_h - pad * 2);
+                }
+                cr->set_source_rgba(0.0, 0.478, 1.0, 0.55);
+            }
+            cr->fill();
+            cr->restore();
+        }
+
+        // F. 设备列表
+        if (show_device_list && !gsconnect_devices.empty()) {
+            int total = (int)gsconnect_devices.size();
+            double pad = fill_padding;
+            int vis = std::min(total, 3);
+            double inner_gap = (vis == 1) ? 0.0 : 6.0;
+            double btn_w = (current_w - pad * 2 - inner_gap * (vis - 1)) / vis;
+            double btn_h = current_h - pad * 2;
+            double btn_y = island_y + pad;
+            double cr_r = 5.0;
+            double step = btn_w + inner_gap;
+
+            cr->save();
+            double ir = (current_h - pad * 2) / 2.0;
+            cr->begin_new_path();
+            cr->arc(island_x + current_w - pad - ir, island_y + pad + ir, ir, -M_PI/2, 0);
+            cr->arc(island_x + current_w - pad - ir, island_y + current_h - pad - ir, ir, 0, M_PI/2);
+            cr->arc(island_x + pad + ir, island_y + current_h - pad - ir, ir, M_PI/2, M_PI);
+            cr->arc(island_x + pad + ir, island_y + pad + ir, ir, M_PI, 3*M_PI/2);
+            cr->close_path();
+            cr->clip();
+
+            for (int i = 0; i < total; i++) {
+                double bx = island_x + pad + (i - scroll_offset) * step;
+                if (bx + btn_w < island_x + pad || bx > island_x + current_w - pad) continue;
+                bool hovered = (i == gsconnect_hovered);
+                bool online = gsconnect_devices[i].connected;
+
+                cr->begin_new_path();
+                cr->arc(bx + btn_w - cr_r, btn_y + cr_r, cr_r, -M_PI/2, 0);
+                cr->arc(bx + btn_w - cr_r, btn_y + btn_h - cr_r, cr_r, 0, M_PI/2);
+                cr->arc(bx + cr_r, btn_y + btn_h - cr_r, cr_r, M_PI/2, M_PI);
+                cr->arc(bx + cr_r, btn_y + cr_r, cr_r, M_PI, 3*M_PI/2);
+                cr->close_path();
+
+                if (online) {
+                    if (hovered)
+                        cr->set_source_rgba(0.15, 0.65, 0.30, 0.55);
+                    else
+                        cr->set_source_rgba(0.10, 0.55, 0.25, 0.20);
+                } else {
+                    if (hovered)
+                        cr->set_source_rgba(1, 1, 1, 0.08);
+                    else
+                        cr->set_source_rgba(1, 1, 1, 0.02);
+                }
+                cr->fill();
+
+                double vis_l = std::max(bx, island_x + pad);
+                double vis_r = std::min(bx + btn_w, island_x + current_w - pad);
+                double vis_cx = (vis_l + vis_r) / 2.0;
+
+                std::string name = gsconnect_devices[i].name;
+                auto layout = create_pango_layout("");
+                layout->set_font_description(Pango::FontDescription("Sans Bold 9"));
+                layout->set_text(name);
+                int lw = (int)(btn_w * 0.85);
+                layout->set_width(lw * PANGO_SCALE);
+                layout->set_wrap(Pango::WRAP_WORD_CHAR);
+                layout->set_alignment(Pango::ALIGN_CENTER);
+
+                double dot_r = 4.5;
+                double dot_y = btn_y + btn_h * 0.38;
+
+                cr->set_source_rgba(
+                    online ? 0.204 : 0.45,
+                    online ? 0.780 : 0.45,
+                    online ? 0.349 : 0.45,
+                    online ? 0.95 : 0.5);
+                cr->arc(vis_cx, dot_y, dot_r, 0, 2 * M_PI);
+                cr->fill();
+
+                cr->set_source_rgba(1, 1, 1, online ? 0.95 : 0.5);
+                cr->move_to(vis_cx - lw / 2.0, dot_y + 10);
+                pango_cairo_show_layout(cr->cobj(), layout->gobj());
+            }
+
+            cr->restore();
+
+            if (total > 3) {
+                if (scroll_offset > 0.01 || scroll_offset < scroll_max - 0.01) {
+                    double ar = radius + 3.0;
+                    double ay = island_y + radius;
+                    double seg = M_PI / 12;
+                    cr->set_source_rgba(0.05, 0.05, 0.05, 1.0);
+                    cr->set_line_width(3.5);
+                    cr->set_line_cap(Cairo::LINE_CAP_ROUND);
+                    if (scroll_offset > 0.01) {
+                        cr->begin_new_path();
+                        cr->arc(island_x + radius, ay, ar, M_PI - seg, M_PI + seg);
+                        cr->stroke();
+                    }
+                    if (scroll_offset < scroll_max - 0.01) {
+                        cr->begin_new_path();
+                        cr->arc(island_x + current_w - radius, ay, ar, -seg, seg);
+                        cr->stroke();
+                    }
+                }
+            }
+        }
+
+        // 岛屿边框 (最上层)
+        pill_path();
         cr->set_source_rgba(1, 1, 1, 0.15);
         cr->set_line_width(1.2);
         cr->stroke();
@@ -648,12 +985,25 @@ private:
     void start_animation() {
         if (!tick_conn.connected()) {
             tick_conn = Glib::signal_timeout().connect([this]() {
-                vel_h = (vel_h + (target_h - current_h) * stiffness) * damping;
+                bounce_vel = (bounce_vel + (-bounce_pos) * 0.15) * 0.75;
+                bounce_pos += bounce_vel;
+                double bscale = 1.0 + 0.10 * bounce_pos;
+                vel_h = (vel_h + (target_h * bscale - current_h) * stiffness) * damping;
                 current_h += vel_h;
-                vel_w = (vel_w + (target_w - current_w) * stiffness) * damping;
+                vel_w = (vel_w + (target_w * bscale - current_w) * stiffness) * damping;
                 current_w += vel_w;
                 vel_y = (vel_y + (target_y - current_y) * stiffness) * damping;
                 current_y += vel_y;
+                vel_fill = (vel_fill + (target_fill - current_fill) * stiffness) * damping;
+                current_fill += vel_fill;
+                scroll_vel = (scroll_vel + (target_scroll - scroll_offset) * 0.25) * 0.78;
+                target_scroll += scroll_rate;
+                target_scroll = std::clamp(target_scroll, 0.0, scroll_max);
+                double next_so = scroll_offset + scroll_vel;
+                if ((next_so < 0.0 && scroll_offset > 0.0) ||
+                    (next_so > scroll_max && scroll_offset < scroll_max - 0.01))
+                    bounce_vel = std::max(bounce_vel, 0.12);
+                scroll_offset = std::clamp(next_so, 0.0, scroll_max);
 
                 int label_height = label.get_allocated_height() > 0 ? label.get_allocated_height() : 20;
 
@@ -667,8 +1017,13 @@ private:
 
                 if (std::abs(target_h - current_h) < 0.05 && std::abs(vel_h) < 0.05 &&
                     std::abs(target_w - current_w) < 0.05 && std::abs(vel_w) < 0.05 &&
-                    std::abs(target_y - current_y) < 0.05 && std::abs(vel_y) < 0.05) {
+                    std::abs(target_y - current_y) < 0.05 && std::abs(vel_y) < 0.05 &&
+                    std::abs(target_fill - current_fill) < 0.005 && std::abs(vel_fill) < 0.005 &&
+                    std::abs(target_scroll - scroll_offset) < 0.005 && std::abs(scroll_vel) < 0.005 &&
+                    std::abs(bounce_pos) < 0.005 && std::abs(bounce_vel) < 0.005) {
                     current_h = target_h; current_w = target_w; current_y = target_y;
+                    current_fill = target_fill; scroll_offset = target_scroll;
+                    bounce_pos = 0.0; bounce_vel = 0.0;
                     return false;
                 }
                 return true;
