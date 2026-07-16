@@ -6,7 +6,7 @@
 
 Island2LocalSend is a GNOME Shell extension + companion GTK application that provides a **floating "Dynamic Island" style drop target** for quickly sending files via drag and drop.
 
-Supports **LocalSend** and **GSConnect** — drag left for LocalSend (green), drag right for GSConnect (blue) with inline device selection.
+Supports **LocalSend** and **GSConnect** — drag left for GSConnect (blue), drag right for LocalSend (green) with inline device selection.
 
 Designed for **GNOME Shell 46+**.
 
@@ -15,8 +15,8 @@ Designed for **GNOME Shell 46+**.
 ## Features
 
 - Floating island-style UI triggered by file drag events
-- **Split-zone island**: left half → LocalSend, right half → GSConnect
-- **Color-coded fill animation**: green for LocalSend, blue for GSConnect
+- **Split-zone island**: left half → GSConnect, right half → LocalSend
+- **Color-coded fill animation**: blue for GSConnect, green for LocalSend
 - **Inline GSConnect device picker**: horizontal pill buttons with scrollable list
 - **Spring-physics animations**: smooth expand/collapse, scroll inertia, bounce feedback
 - Drag & drop files onto island or specific GSConnect device
@@ -80,8 +80,8 @@ Restart GNOME Shell (Alt+F2 → `r` on X11, or log out/in on Wayland).
 
 | Action | Visual | Backend |
 |--------|--------|---------|
-| Drag to **left half** | Green fill | LocalSend |
-| Drag to **right half** | Blue fill → device list | GSConnect |
+| Drag to **left half** | Blue fill → device list | GSConnect |
+| Drag to **right half** | Green fill | LocalSend |
 | Select a device | Green pill highlight | GSConnect → selected device |
 | Release | Island contracts, sends file | — |
 
