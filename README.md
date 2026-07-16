@@ -10,6 +10,10 @@ Supports **LocalSend** and **GSConnect** — drag left for GSConnect (blue), dra
 
 Designed for **GNOME Shell 46+**.
 
+<p align="center">
+  <img src="docs/demo.gif" width="600" alt="Drag files onto island to send">
+</p>
+
 ---
 
 ## Features
