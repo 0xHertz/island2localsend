@@ -141,7 +141,7 @@ public:
                 double island_center = island_x_start + current_w / 2.0;
 
                 if (show_device_list) {
-                    target_fill = 1.0;
+                    target_fill = -1.0;
                     drag_is_gsconnect = true;
                     int total = (int)gsconnect_devices.size();
                     double pad = fill_padding;
@@ -186,7 +186,7 @@ public:
                             query_gsconnect_devices();
                         if (gsconnect_available) {
                             drag_is_gsconnect = true;
-                            if (target_fill >= 0.92 && !gsconnect_devices.empty()) {
+                            if (std::abs(target_fill) >= 0.92 && !gsconnect_devices.empty()) {
                                 show_device_list = true;
                                 gsconnect_checked = false;
                             }
