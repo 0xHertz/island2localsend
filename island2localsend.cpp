@@ -181,7 +181,7 @@ public:
                         prev_abs_fill = af;
                     }
 
-                    if (x >= island_center) {
+                    if (x < island_center) {
                         if (!gsconnect_checked)
                             query_gsconnect_devices();
                         if (gsconnect_available) {
@@ -854,7 +854,7 @@ private:
                 } else {
                     cr->rectangle(island_x + pad, island_y + pad, fill_w, current_h - pad * 2);
                 }
-                cr->set_source_rgba(0.204, 0.780, 0.349, 0.55);
+                cr->set_source_rgba(0.0, 0.478, 1.0, 0.55);
             } else {
                 if (use_arc) {
                     double tip = island_x + current_w - pad - fill_w;
@@ -866,7 +866,7 @@ private:
                 } else {
                     cr->rectangle(island_x + current_w - pad - fill_w, island_y + pad, fill_w, current_h - pad * 2);
                 }
-                cr->set_source_rgba(0.0, 0.478, 1.0, 0.55);
+                cr->set_source_rgba(0.204, 0.780, 0.349, 0.55);
             }
             cr->fill();
             cr->restore();
