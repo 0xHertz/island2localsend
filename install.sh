@@ -28,7 +28,8 @@ cp -r icons/hicolor/* ~/.local/share/icons/hicolor/
 
 # 更新图标缓存
 echo "更新图标缓存..."
-gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor/ 2>/dev/null || sudo gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor/
+rm -f ~/.local/share/icons/hicolor/icon-theme.cache
+gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor/ 2>/dev/null || true
 
 # 安装桌面文件
 echo "安装桌面文件..."
