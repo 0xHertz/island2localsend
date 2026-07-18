@@ -179,7 +179,7 @@ public:
                         target_fill = 0.0;
                     } else {
                         double remap = (std::abs(offset) - dead) / (0.5 - dead);
-                        target_fill = (offset < 0 ? -1.0 : 1.0) * std::min(remap / 0.25, 1.0);
+                        target_fill = (offset < 0 ? -1.0 : 1.0) * std::min(remap, 1.0);
                     }
                     {
                         double af = std::abs(target_fill);
