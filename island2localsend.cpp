@@ -7,6 +7,7 @@
 #include <chrono>
 #include <regex>
 #include <cstring>
+#include <fstream>
 
 class MyWindow : public Gtk::Window {
 public:
@@ -73,25 +74,27 @@ public:
 
             // 1. 解析拖入的数据
             std::vector<std::string> paths;
+            std::string drop_text;
             if ((selection_data.get_length() >= 0) && (selection_data.get_format() == 8)) {
-                // 处理 URI 列表 (文件和文件夹)
                 auto uris = selection_data.get_uris();
                 if (!uris.empty()) {
                     for (auto& uri : uris) {
-                        // 将 file:// 协议转换为本地绝对路径
                         auto file = Gio::File::create_for_uri(uri);
                         std::string path = file->get_path();
-                        if (!path.empty()) {
+                        if (!path.empty())
                             paths.push_back(path);
-                        }
                     }
                 } else {
-                    // 如果不是文件，尝试获取纯文本内容
-                    std::string text = selection_data.get_text();
-                    if (!text.empty()) {
-                        paths.push_back(text);
-                    }
+                    drop_text = selection_data.get_text();
                 }
+            }
+
+            if (!drop_text.empty()) {
+                std::string tmp = "/tmp/island2localsend_text.txt";
+                std::ofstream ofs(tmp);
+                ofs << drop_text;
+                ofs.close();
+                paths.push_back(tmp);
             }
 
             // 2. 如果路径列表不为空，发送文件
