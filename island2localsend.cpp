@@ -35,7 +35,7 @@ public:
         auto* overlay = Gtk::make_managed<Gtk::Overlay>();
         overlay->add(drawing_area);
 
-        label.set_markup("<span color='white' font='11'><b>释放以通过 LocalSend 发送</b></span>");
+        label.set_markup("<span color='white' font='11'><b>← GSConnect  |  LocalSend →</b></span>");
         label.set_opacity(0.0);
         label.set_valign(Gtk::Align::ALIGN_START); // 改为顶部对齐
         label.set_halign(Gtk::Align::ALIGN_CENTER); // 水平依然居中
