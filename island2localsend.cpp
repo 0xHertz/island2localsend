@@ -684,12 +684,14 @@ private:
         if (!app_indicator) return;
 
         if (is_enabled) {
+            app_indicator_set_status(app_indicator, APP_INDICATOR_STATUS_ACTIVE);
             app_indicator_set_icon_full(
                 app_indicator,
-                "folder-publicshare",
+                "folder-publicshare-symbolic",
                 "LocalSend 发送器 (已启用)"
             );
         } else {
+            app_indicator_set_status(app_indicator, APP_INDICATOR_STATUS_PASSIVE);
             app_indicator_set_icon_full(
                 app_indicator,
                 "folder-publicshare-symbolic",
