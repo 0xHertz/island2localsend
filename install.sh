@@ -23,7 +23,7 @@ sudo chmod +x /usr/local/bin/island2localsend
 echo "安装图标..."
 sudo chown -R $USER:$USER ~/.local/share/icons/hicolor/ 2>/dev/null
 mkdir -p ~/.local/share/icons/hicolor/scalable/apps/
-cp icons/island-sender.svg ~/.local/share/icons/hicolor/scalable/apps/
+cp icons/island2localsend.svg ~/.local/share/icons/hicolor/scalable/apps/
 cp -r icons/hicolor/* ~/.local/share/icons/hicolor/
 
 # 更新图标缓存
