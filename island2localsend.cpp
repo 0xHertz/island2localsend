@@ -684,17 +684,15 @@ private:
         if (!app_indicator) return;
 
         if (is_enabled) {
-            // 启用时使用蓝色图标
-            // 尝试使用系统图标（通常是蓝色的）
             app_indicator_set_icon_full(
                 app_indicator,
-                "document-send",  // 蓝色发送图标
+                "folder-publicshare",
                 "LocalSend 发送器 (已启用)"
             );
         } else {
             app_indicator_set_icon_full(
                 app_indicator,
-                "document-send-symbolic",
+                "folder-publicshare-symbolic",
                 "LocalSend 发送器 (已禁用)"
             );
         }
