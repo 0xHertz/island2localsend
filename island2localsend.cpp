@@ -692,11 +692,9 @@ private:
                 "LocalSend 发送器 (已启用)"
             );
         } else {
-            // 禁用时使用灰色/默认图标
-            // 尝试使用灰色变体图标
             app_indicator_set_icon_full(
                 app_indicator,
-                "view-restore",  // 灰色发送图标
+                "document-send-symbolic",
                 "LocalSend 发送器 (已禁用)"
             );
         }
