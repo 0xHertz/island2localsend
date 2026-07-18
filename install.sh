@@ -21,18 +21,20 @@ sudo chmod +x /usr/local/bin/island2localsend
 
 # 安装图标
 echo "安装图标..."
-sudo mkdir -p ~/.local/share/icons/hicolor/scalable/apps/
-sudo cp icons/island-sender.svg ~/.local/share/icons/hicolor/scalable/apps/
-sudo cp -r icons/hicolor/* ~/.local/share/icons/hicolor/
+sudo chown -R $USER:$USER ~/.local/share/icons/hicolor/ 2>/dev/null
+mkdir -p ~/.local/share/icons/hicolor/scalable/apps/
+cp icons/island-sender.svg ~/.local/share/icons/hicolor/scalable/apps/
+cp -r icons/hicolor/* ~/.local/share/icons/hicolor/
 
 # 更新图标缓存
 echo "更新图标缓存..."
-sudo gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor/
+gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor/ 2>/dev/null || sudo gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor/
 
 # 安装桌面文件
 echo "安装桌面文件..."
-sudo cp island2localsend.desktop ~/.local/share/applications/
-sudo chmod 644 ~/.local/share/applications/island2localsend.desktop
+mkdir -p ~/.local/share/applications/
+cp island2localsend.desktop ~/.local/share/applications/
+chmod 644 ~/.local/share/applications/island2localsend.desktop
 
 # 安装自动启动文件（可选）
 #echo "配置自动启动..."
