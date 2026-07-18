@@ -686,13 +686,13 @@ private:
         if (is_enabled) {
             app_indicator_set_icon_full(
                 app_indicator,
-                "document-send",
+                "/home/mr-kechen/Documents/gnome-extension/island2localsend@kechen/icons/tray/island-send.png",
                 "LocalSend 发送器 (已启用)"
             );
         } else {
             app_indicator_set_icon_full(
                 app_indicator,
-                "document-send-symbolic",
+                "/home/mr-kechen/Documents/gnome-extension/island2localsend@kechen/icons/tray/island-send-symbolic.png",
                 "LocalSend 发送器 (已禁用)"
             );
         }
