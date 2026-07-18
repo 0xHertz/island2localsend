@@ -225,6 +225,7 @@ public:
             target_h = 20.0;
             target_y = -50.0;
             label.set_opacity(0.0);
+            label.set_markup("<span color='white' font='11'><b>← GSConnect  |  LocalSend →</b></span>");
             show_device_list = false;
             gsconnect_hovered = -1;
             gsconnect_checked = false;
