@@ -173,7 +173,14 @@ public:
                     label.set_markup(
                         "<span color='white' font='11'><b></b></span>");
                 } else {
-                    target_fill = std::clamp((x - island_center) / (current_w * 0.25), -1.0, 1.0);
+                    double offset = (x - island_center) / current_w;
+                    double dead = 0.10;
+                    if (std::abs(offset) < dead) {
+                        target_fill = 0.0;
+                    } else {
+                        double remap = (std::abs(offset) - dead) / (0.5 - dead);
+                        target_fill = (offset < 0 ? -1.0 : 1.0) * std::min(remap / 0.25, 1.0);
+                    }
                     {
                         double af = std::abs(target_fill);
                         if (af >= 0.92 && prev_abs_fill < 0.92)
@@ -181,7 +188,7 @@ public:
                         prev_abs_fill = af;
                     }
 
-                    if (x < island_center) {
+                    if (offset < -dead) {
                         if (!gsconnect_checked)
                             query_gsconnect_devices();
                         if (gsconnect_available) {
@@ -196,7 +203,7 @@ public:
                             label.set_markup(
                                 "<span color='white' font='11'><b>LocalSend</b></span>");
                         }
-                    } else {
+                    } else if (offset > dead) {
                         drag_is_gsconnect = false;
                         label.set_markup(
                             "<span color='white' font='11'><b>LocalSend</b></span>");
